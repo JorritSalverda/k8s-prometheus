@@ -1,7 +1,7 @@
 To run Prometheus at it's cheapest - yes with possible downtime - execute the following command:
 
 ```
-cat kubernetes.yaml | HOSTNAME=prometheus.myserver.com envsubst | kubectl apply -f -
+cat kubernetes.yaml | HOSTNAME=prometheus.myserver.com envsubst \$HOSTNAME | kubectl apply -f -
 ```
 
 Check if everything's up and running with:
