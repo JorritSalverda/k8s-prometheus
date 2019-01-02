@@ -98,6 +98,21 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
+  name: prometheus-thanos-peers
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - name: cluster
+    port: 10900
+    targetPort: cluster
+  selector:
+    # Useful endpoint for gathering all thanos components for common gossip cluster.
+    thanos-peer: "true"
+---
+apiVersion: v1
+kind: Service
+metadata:
   name: prometheus-sts
   namespace: prometheus
   labels:
@@ -155,6 +170,7 @@ spec:
     metadata:
       labels:
         app: prometheus
+        thanos-peer: "true"
       annotations:
         prometheus.io/scrape: "true"
     spec:
@@ -186,12 +202,11 @@ spec:
         command: ["/bin/prometheus"]
         args: [
           "--config.file=/prometheus-config/prometheus.yaml",
-          "--storage.tsdb.path=/prometheus", # default: ./data
-          "--storage.tsdb.retention=6h", # default: 15d
-
+          "--storage.tsdb.path=/prometheus",
+          "--storage.tsdb.retention=24h",
+          "--storage.tsdb.min-block-duration=2h",
+          "--storage.tsdb.max-block-duration=2h",
           "--web.enable-lifecycle",
-          "--web.console.libraries=/etc/prometheus/console_libraries", # default: console_libraries
-          "--web.console.templates=/etc/prometheus/consoles", # default: consoles
           "--web.external-url=https://${HOSTNAME}/"
         ]
         securityContext:
@@ -223,13 +238,52 @@ spec:
           httpGet:
             path: /-/ready
             port: http
+      - name: thanos-sidecar
+        # Always use explicit image tags (release or master-<date>-sha) instead of ambigous `latest` or `master`.
+        image: improbable/thanos:v0.2.1
+        env:
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: /creds/gcs-credentials.json
+        args:
+        - "sidecar"
+        - "--log.level=debug"
+        - "--tsdb.path=/var/prometheus"
+        - "--prometheus.url=http://127.0.0.1:9090"
+        - "--cluster.peers=prometheus-thanos-peers.default.svc.cluster.local:10900"
+       # NOTE: This is required to be added in GCS prior startup of this.
+        - "--gcs.bucket=${GCS_BUCKET_NAME}"
+        - "--reloader.config-file=/etc/prometheus/prometheus.yaml.tmpl"
+        - "--reloader.config-envsubst-file=/etc/prometheus-shared/prometheus.yaml"
+        ports:
+        - name: sidecar-http
+          containerPort: 10902
+        - name: grpc
+          containerPort: 10901
+        - name: cluster
+          containerPort: 10900
+        volumeMounts:
+        - mountPath: /prometheus
+          name: prometheus-data
+        - mountPath: /creds/
+          name: prometheus-gcs-credentials
+        - mountPath: /etc/prometheus-shared
+          name: prometheus-config
+        - mountPath: /etc/prometheus
+          name: prometheus-config-template
       volumes:
-      - name: prometheus-config
+      - name: prometheus-config-template
         configMap:
           name: prometheus-config
+      - name: prometheus-config
+        emptyDir: {}
       - name: prometheus-rules
         configMap:
           name: prometheus-rules
+      - name: prometheus-gcs-credentials
+        secret:
+          defaultMode: 420
+          # NOTE: gcs-credentials secret with single file gcs-credentials.json (GCS service account) is required.
+          secretName: prometheus-gcs-credentials
   volumeClaimTemplates:
   - metadata:
       name: prometheus-data
@@ -252,7 +306,11 @@ metadata:
   labels:
     app: prometheus
 data:
-  prometheus.yaml: |-
+  prometheus.yaml.tmpl: |-
+    global:
+      external_labels:
+        monitor: prometheus
+        replica: '$(HOSTNAME)'
     # A scrape configuration for running Prometheus on a Kubernetes cluster.
     # This uses separate scrape configs for cluster components (i.e. API server, node)
     # and services to allow each to use different authentication configs.
@@ -582,3 +640,14 @@ metadata:
     app: prometheus
 data:
   rules.yaml: |-
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: prometheus-gcs-credentials
+  namespace: prometheus
+  labels:
+    app: prometheus
+type: Opaque
+data:
+  gcs-credentials.json: ${GCS_CREDENTIALS}
