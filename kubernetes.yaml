@@ -96,6 +96,23 @@ spec:
     app: prometheus
 ---
 apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-sts
+  namespace: prometheus
+  labels:
+    app: prometheus
+spec:
+  clusterIP: None
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+    protocol: TCP
+  selector:
+    app: prometheus
+---
+apiVersion: v1
 kind: Secret
 metadata:
   name: prometheus-letsencrypt-certificate
@@ -120,8 +137,8 @@ spec:
       app: prometheus
   maxUnavailable: 1
 ---
-apiVersion: extensions/v1beta1
-kind: Deployment
+apiVersion: apps/v1
+kind: StatefulSet
 metadata:
   name: prometheus
   namespace: prometheus
@@ -130,6 +147,7 @@ metadata:
 spec:
   replicas: 1
   revisionHistoryLimit: 10
+  serviceName: prometheus-sts
   selector:
     matchLabels:
       app: prometheus
@@ -204,31 +222,25 @@ spec:
             path: /-/ready
             port: http
       volumes:
-      - name: prometheus-data
-        persistentVolumeClaim:
-          claimName: prometheus-data
       - name: prometheus-config
         configMap:
           name: prometheus-config
       - name: prometheus-rules
         configMap:
           name: prometheus-rules
----
-kind: PersistentVolumeClaim
-apiVersion: v1
-metadata:
-  name: prometheus-data
-  namespace: prometheus
-  labels:
-    app: prometheus
-  annotations:
-      volume.beta.kubernetes.io/storage-class: standard
-spec:
-  accessModes:
-  - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
+  volumeClaimTemplates:
+  - metadata:
+      name: prometheus-data
+      namespace: prometheus
+      labels:
+        app: prometheus
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      storageClassName: standard
+      resources:
+        requests:
+          storage: 1Gi
 ---
 apiVersion: v1
 kind: ConfigMap
