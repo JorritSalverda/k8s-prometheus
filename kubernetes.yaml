@@ -99,6 +99,9 @@ apiVersion: v1
 kind: Service
 metadata:
   name: prometheus-thanos-peers
+  namespace: prometheus
+  labels:
+    app: prometheus
 spec:
   type: ClusterIP
   clusterIP: None
@@ -239,7 +242,6 @@ spec:
             path: /-/ready
             port: http
       - name: thanos-sidecar
-        # Always use explicit image tags (release or master-<date>-sha) instead of ambigous `latest` or `master`.
         image: improbable/thanos:v0.2.1
         env:
         - name: GOOGLE_APPLICATION_CREDENTIALS
@@ -249,9 +251,8 @@ spec:
         - "--log.level=debug"
         - "--tsdb.path=/var/prometheus"
         - "--prometheus.url=http://127.0.0.1:9090"
-        - "--cluster.peers=prometheus-thanos-peers.default.svc.cluster.local:10900"
-       # NOTE: This is required to be added in GCS prior startup of this.
-        - "--gcs.bucket=${GCS_BUCKET_NAME}"
+        - "--cluster.peers=prometheus-thanos-peers.prometheus.svc.cluster.local:10900"
+        - "--objstore.config-file=/etc/prometheus/bucket.yaml"
         - "--reloader.config-file=/etc/prometheus/prometheus.yaml.tmpl"
         - "--reloader.config-envsubst-file=/etc/prometheus-shared/prometheus.yaml"
         ports:
@@ -261,8 +262,15 @@ spec:
           containerPort: 10901
         - name: cluster
           containerPort: 10900
+        resources:
+          requests:
+            cpu: 10m
+            memory: 10Mi
+          limits:
+            cpu: 1000m
+            memory: 1024Mi
         volumeMounts:
-        - mountPath: /prometheus
+        - mountPath: /var/prometheus
           name: prometheus-data
         - mountPath: /creds/
           name: prometheus-gcs-credentials
@@ -630,6 +638,11 @@ data:
     # load rule files
     rule_files:
     - '/prometheus-rules/*.yaml'
+
+  bucket.yaml: |-
+    type: GCS
+    config:
+      bucket: ${GCS_BUCKET_NAME}
 ---
 apiVersion: v1
 kind: ConfigMap
