@@ -219,8 +219,8 @@ spec:
             cpu: 100m
             memory: 100Mi
           limits:
-            cpu: 1000m
-            memory: 1024Mi
+            cpu: 200m
+            memory: 200Mi
         volumeMounts:
         - mountPath: /prometheus
           name: prometheus-data
@@ -267,8 +267,8 @@ spec:
             cpu: 10m
             memory: 10Mi
           limits:
-            cpu: 1000m
-            memory: 1024Mi
+            cpu: 100m
+            memory: 100Mi
         volumeMounts:
         - mountPath: /var/prometheus
           name: prometheus-data
