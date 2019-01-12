@@ -98,24 +98,6 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: prometheus-thanos-peers
-  namespace: prometheus
-  labels:
-    app: prometheus
-spec:
-  type: ClusterIP
-  clusterIP: None
-  ports:
-  - name: cluster
-    port: 10900
-    targetPort: cluster
-  selector:
-    # Useful endpoint for gathering all thanos components for common gossip cluster.
-    thanos-peer: "true"
----
-apiVersion: v1
-kind: Service
-metadata:
   name: prometheus-sts
   namespace: prometheus
   labels:
@@ -204,7 +186,7 @@ spec:
         image: prom/prometheus:v2.6.0
         command: ["/bin/prometheus"]
         args: [
-          "--config.file=/prometheus-config/prometheus.yaml",
+          "--config.file=/prometheus-config/prometheus.yaml.tmpl",
           "--storage.tsdb.path=/prometheus",
           "--storage.tsdb.retention=24h",
           "--storage.tsdb.min-block-duration=2h",
@@ -241,57 +223,13 @@ spec:
           httpGet:
             path: /-/ready
             port: http
-      - name: thanos-sidecar
-        image: improbable/thanos:v0.2.1
-        env:
-        - name: GOOGLE_APPLICATION_CREDENTIALS
-          value: /creds/gcs-credentials.json
-        args:
-        - "sidecar"
-        - "--log.level=debug"
-        - "--tsdb.path=/var/prometheus"
-        - "--prometheus.url=http://127.0.0.1:9090"
-        - "--cluster.peers=prometheus-thanos-peers.prometheus.svc.cluster.local:10900"
-        - "--objstore.config-file=/etc/prometheus/bucket.yaml"
-        - "--reloader.config-file=/etc/prometheus/prometheus.yaml.tmpl"
-        - "--reloader.config-envsubst-file=/etc/prometheus-shared/prometheus.yaml"
-        ports:
-        - name: sidecar-http
-          containerPort: 10902
-        - name: grpc
-          containerPort: 10901
-        - name: cluster
-          containerPort: 10900
-        resources:
-          requests:
-            cpu: 50m
-            memory: 100Mi
-          limits:
-            cpu: 50m
-            memory: 100Mi
-        volumeMounts:
-        - mountPath: /var/prometheus
-          name: prometheus-data
-        - mountPath: /creds/
-          name: prometheus-gcs-credentials
-        - mountPath: /etc/prometheus-shared
-          name: prometheus-config
-        - mountPath: /etc/prometheus
-          name: prometheus-config-template
       volumes:
-      - name: prometheus-config-template
+      - name: prometheus-config
         configMap:
           name: prometheus-config
-      - name: prometheus-config
-        emptyDir: {}
       - name: prometheus-rules
         configMap:
           name: prometheus-rules
-      - name: prometheus-gcs-credentials
-        secret:
-          defaultMode: 420
-          # NOTE: gcs-credentials secret with single file gcs-credentials.json (GCS service account) is required.
-          secretName: prometheus-gcs-credentials
   volumeClaimTemplates:
   - metadata:
       name: prometheus-data
@@ -653,14 +591,3 @@ metadata:
     app: prometheus
 data:
   rules.yaml: |-
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: prometheus-gcs-credentials
-  namespace: prometheus
-  labels:
-    app: prometheus
-type: Opaque
-data:
-  gcs-credentials.json: ${GCS_CREDENTIALS}

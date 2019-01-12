@@ -12,6 +12,11 @@ To run Prometheus at it's cheapest - yes with possible downtime - execute the fo
 ```
 cat kubernetes.yaml | HOSTNAME=prometheus.myserver.com GCS_BUCKET_NAME=mythanosbucket GCS_CREDENTIALS=*** envsubst \$HOSTNAME,\$GCS_BUCKET_NAME,\$GCS_CREDENTIALS | kubectl apply -f -
 ```
+or without thanos
+
+```
+cat kubernetes-no-thanos.yaml | HOSTNAME=prometheus.myserver.com envsubst \$HOSTNAME | kubectl apply -f -
+```
 
 Check if everything's up and running with:
 
